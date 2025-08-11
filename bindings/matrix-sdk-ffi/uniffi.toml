@@ -5,3 +5,4 @@ android_cleaner = true
 
 [bindings.dart]
 cdylib_name = "matrix_sdk_ffi"
+split_into_parts = true
