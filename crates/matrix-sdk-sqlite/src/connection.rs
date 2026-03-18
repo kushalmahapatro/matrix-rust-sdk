@@ -89,13 +89,26 @@ pub type Connection = Object;
 #[derive(Debug)]
 pub struct Manager {
     database_path: PathBuf,
+    #[cfg(feature = "bundled-sqlcipher")]
+    secret: Option<crate::Secret>,
 }
 
 impl Manager {
     /// Creates a new [`Manager`] for a database.
     #[must_use]
+    #[cfg(not(feature = "bundled-sqlcipher"))]
     pub fn new(database_path: PathBuf) -> Self {
         Self { database_path }
+    }
+
+    /// Creates a new [`Manager`] for a database, with optional SQLCipher key/passphrase.
+    #[must_use]
+    #[cfg(feature = "bundled-sqlcipher")]
+    pub fn new(database_path: PathBuf, secret: Option<crate::Secret>) -> Self {
+        Self {
+            database_path,
+            secret,
+        }
     }
 }
 
@@ -105,7 +118,21 @@ impl managed::Manager for Manager {
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
         let path = self.database_path.clone();
-        SyncWrapper::new(RUNTIME, move || rusqlite::Connection::open(path)).await
+        #[cfg(feature = "bundled-sqlcipher")]
+        let secret = self.secret.clone();
+
+        SyncWrapper::new(RUNTIME, move || {
+            let conn = rusqlite::Connection::open(path)?;
+            #[cfg(feature = "bundled-sqlcipher")]
+            if let Some(ref secret) = secret {
+                match secret {
+                    crate::Secret::PassPhrase(p) => conn.pragma_update(None, "key", p.as_str())?,
+                    crate::Secret::Key(k) => conn.pragma_update(None, "key", &k[..])?,
+                }
+            }
+            Ok(conn)
+        })
+        .await
     }
 
     async fn recycle(

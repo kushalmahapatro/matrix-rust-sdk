@@ -214,7 +214,10 @@ impl SqliteStoreConfig {
         database_name: &str,
     ) -> Result<connection::Pool, connection::CreatePoolError> {
         let path = self.path.join(database_name);
+        #[cfg(not(feature = "bundled-sqlcipher"))]
         let manager = connection::Manager::new(path);
+        #[cfg(feature = "bundled-sqlcipher")]
+        let manager = connection::Manager::new(path, self.secret.clone());
 
         connection::Pool::builder(manager)
             .config(self.pool_config)
